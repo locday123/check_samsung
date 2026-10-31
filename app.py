@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
-import pandas as pd
+import csv
 import io
 
 app = Flask(__name__)
@@ -82,8 +82,7 @@ def estimate_cost():
 
 
 # -------------------------------------------------------------
-# 4. API LẤY DANH SÁCH SẢN PHẨM & GIÁ TỪ GOOGLE SHEET (MỚI)
-# Cho phép lọc theo tên: /api/products?search=macbook
+# 4. API LẤY DANH SÁCH SẢN PHẨM TỪ GOOGLE SHEET (Dùng thư viện csv chuẩn)
 # -------------------------------------------------------------
 @app.route('/api/products', methods=['GET'])
 def get_products():
@@ -91,32 +90,30 @@ def get_products():
     limit = request.args.get('limit', 100, type=int)
 
     try:
-        # Tải dữ liệu từ Google Sheet dưới dạng CSV
         res = requests.get(SHEET_CSV_URL, timeout=10)
         if res.status_code != 200:
             return jsonify({"error": "Không thể tải Google Sheet"}), 500
 
-        # Đọc dữ liệu CSV bằng Pandas
-        df = pd.read_csv(io.StringIO(res.text))
+        # Đọc dữ liệu CSV bằng thư viện chuẩn Python (không cần pandas)
+        f = io.StringIO(res.text)
+        reader = csv.DictReader(f)
         
-        # Làm sạch tên cột
-        df.columns = df.columns.str.strip()
-        
-        # Điền giá trị trống bằng chuỗi rỗng
-        df = df.fillna('')
-
-        # Tìm kiếm theo tên sản phẩm nếu người dùng cung cấp từ khóa
-        if search_query:
-            df = df[df['Tên hàng'].astype(str).str.lower().str.contains(search_query)]
-
-        # Giới hạn số lượng bản ghi trả về
-        df_limited = df.head(limit)
-
-        # Chuyển đổi thành danh sách dict
-        products_list = df_limited.to_dict(orient='records')
+        products_list = []
+        for row in reader:
+            # Làm sạch key và giá trị
+            cleaned_row = {k.strip(): (v.strip() if v else '') for k, v in row.items() if k}
+            
+            # Kiểm tra nếu có từ khóa tìm kiếm
+            if search_query:
+                ten_hang = cleaned_row.get('Tên hàng', '').lower()
+                if search_query not in ten_hang:
+                    continue
+            
+            products_list.append(cleaned_row)
+            if len(products_list) >= limit:
+                break
 
         return jsonify({
-            "total_matches": len(df),
             "returned": len(products_list),
             "data": products_list
         }), 200
