@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 # URL xuất file CSV trực tiếp từ Google Sheet
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1pyqAiWBtDmyjpT9KEjtJt4UZKNoRHA_lgrGUUSyxen8/export?format=csv"
-
+SHEET_CSV_URL2 = "https://docs.google.com/spreadsheets/d/1pyqAiWBtDmyjpT9KEjtJt4UZKNoRHA_lgrGUUSyxen8/export?format=csv&gid=1347701278"
 @app.route('/', methods=['GET'])
 def index():
     return jsonify({"status": "running", "message": "Samsung Proxy API is active"}), 200
@@ -121,6 +121,44 @@ def get_products():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# -------------------------------------------------------------
+# API LẤY DANH SÁCH SẢN PHẨM & ID_SP TỪ TRANG TÍNH 2
+# Endpoint mới: /api/samsung_name?search=S24&limit=50
+# -------------------------------------------------------------
+@app.route('/api/samsung_name', methods=['GET'])
+def get_samsung_name():
+    search_query = request.args.get('search', '').strip().lower()
+    limit = request.args.get('limit', 100, type=int)
+
+    try:
+        res = requests.get(SHEET_CSV_URL2, timeout=10)
+        if res.status_code != 200:
+            return jsonify({"error": "Không thể tải Google Sheet"}), 500
+
+        f = io.StringIO(res.text)
+        reader = csv.DictReader(f)
+        
+        products_list = []
+        for row in reader:
+            cleaned_row = {k.strip(): (v.strip() if v else '') for k, v in row.items() if k}
+            
+            if search_query:
+                ten_san_pham = cleaned_row.get('Sản phẩm', '').lower()
+                if search_query not in ten_san_pham:
+                    continue
+            
+            products_list.append(cleaned_row)
+            if len(products_list) >= limit:
+                break
+
+        return jsonify({
+            "returned": len(products_list),
+            "data": products_list
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
